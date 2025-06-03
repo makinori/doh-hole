@@ -24,8 +24,13 @@ import (
 
 const (
 	// hostname can resolve different ips closest to location so need a bootstrap
-	DOH_HOSTNAME  = "doh.dns.sb"
-	BOOTSTRAP_DNS = "185.222.222.222:53" // also dns.sb
+
+	DOH_HOSTNAME  = "dns.quad9.net"
+	BOOTSTRAP_DNS = "9.9.9.9:53"
+
+	// would use but response time can sometimes vary
+	// DOH_HOSTNAME  = "doh.dns.sb"
+	// BOOTSTRAP_DNS = "185.222.222.222:53"
 
 	// project honeypot
 	// DOH_HOSTNAME  = "cloudflare-dns.com"
