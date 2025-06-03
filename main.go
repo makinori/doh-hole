@@ -89,7 +89,7 @@ var (
 	blockedHostsMutex = sync.Mutex{}
 )
 
-func filterDNS(questions *[]dns.Question) *dns.Msg {
+func filterDNS(req *dns.Msg) *dns.Msg {
 	// multiple questions are barely supported. answer null if any are blocked
 	// note: we're blocking everything, not just A and AAAA
 
@@ -98,7 +98,7 @@ func filterDNS(questions *[]dns.Question) *dns.Msg {
 
 	var blockedQuestion *dns.Question
 
-	for _, question := range *questions {
+	for _, question := range req.Question {
 		hostname := question.Name
 		if strings.HasSuffix(hostname, ".") {
 			hostname = hostname[:len(hostname)-1]
@@ -121,6 +121,7 @@ func filterDNS(questions *[]dns.Question) *dns.Msg {
 	m = m.SetRcode(m, dns.RcodeSuccess)
 	m.RecursionAvailable = true
 	m.Compress = true
+	m.Id = req.Id
 
 	hdr := dns.RR_Header{
 		Name:  blockedQuestion.Name,
@@ -149,7 +150,7 @@ func filterDNS(questions *[]dns.Question) *dns.Msg {
 type dnsHandler struct{}
 
 func (h *dnsHandler) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
-	blockedAnswer := filterDNS(&req.Question)
+	blockedAnswer := filterDNS(req)
 	if blockedAnswer != nil {
 		w.WriteMsg(blockedAnswer)
 		return
