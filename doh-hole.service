@@ -1,0 +1,8 @@
+[Unit]
+Description=DoH Hole
+
+[Service]
+ExecStart=/usr/bin/doh-hole
+
+[Install]
+WantedBy=multi-user.target

@@ -19,8 +19,7 @@ Find more in `main.go`
     dns=none
     ```
 
--   Build and install with `just install`
-
--   Update `/etc/resolv.conf` with `nameserver 127.0.0.1`
+-   Build and install with `just install`<br/>
+    Please read **Justfile** before running
 
 -   Verify at top of https://dns.sb and any from [StevenBlack/hosts](https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts)
