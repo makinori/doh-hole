@@ -4,7 +4,7 @@ Tiny DNS over HTTPS resolver with block list in Go
 
 Uses [dns.sb](https://dns.sb) and [StevenBlack/hosts](https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts)
 
-Find more in `main.go`
+Find more in [main.go](https://github.com/makinori/doh-hole/blob/main/main.go)
 
 ## Installation
 
