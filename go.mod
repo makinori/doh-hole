@@ -5,7 +5,6 @@ go 1.24.3
 require (
 	github.com/coredns/coredns v1.12.1
 	github.com/miekg/dns v1.1.66
-	github.com/robfig/cron/v3 v3.0.1
 	golang.org/x/text v0.24.0
 )
 

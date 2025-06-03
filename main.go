@@ -16,7 +16,6 @@ import (
 
 	"github.com/coredns/coredns/plugin/pkg/doh"
 	"github.com/miekg/dns"
-	"github.com/robfig/cron/v3"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 )
@@ -32,7 +31,9 @@ const (
 	// DOH_HOSTNAME  = "cloudflare-dns.com"
 	// BOOTSTRAP_DNS = "1.1.1.1:53"
 
-	HOSTS_URL = "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+	BLOCKED_HOSTS_URL = "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+	// use expire so if machine has slept, will update if expired
+	BLOCKED_HOSTS_EXPIRE = time.Hour * 24
 )
 
 func envOrDefault(key string, defaultValue string) string {
@@ -85,9 +86,63 @@ var (
 		// },
 	}
 
-	blockedHosts      map[string]struct{}
-	blockedHostsMutex = sync.Mutex{}
+	blockedHosts       map[string]struct{}
+	blockedHostsMutex  = sync.Mutex{}
+	blockedHostsExpire time.Time
+
+	blockedHostRegexp = regexp.MustCompile(`^0\.0\.0\.0 (.+?)$`)
 )
+
+func _updateBlockedHosts() error {
+	// TODO: will use bootstrap dns. shouldnt. idk maybe im too schizo
+
+	res, err := httpClient.Get(BLOCKED_HOSTS_URL)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+
+	data, err := io.ReadAll(res.Body)
+	if err != nil {
+		return err
+	}
+
+	newBlockedHosts := map[string]struct{}{}
+
+	for line := range strings.SplitSeq(string(data), "\n") {
+		matches := blockedHostRegexp.FindStringSubmatch(strings.TrimSpace(line))
+		if len(matches) == 0 {
+			continue
+		}
+		newBlockedHosts[matches[1]] = struct{}{}
+	}
+
+	blockedHostsMutex.Lock()
+	blockedHosts = newBlockedHosts
+	blockedHostsMutex.Unlock()
+
+	p := message.NewPrinter(language.English)
+	log.Println(p.Sprintf(
+		"got %d blocked hosts. expires in %s", len(blockedHosts),
+		formatDuration(BLOCKED_HOSTS_EXPIRE),
+	))
+
+	return nil
+}
+
+func ensureBlockList() bool {
+	if time.Now().Before(blockedHostsExpire) {
+		return true
+	}
+
+	// immediate update expire
+	blockedHostsExpire = time.Now().Add(BLOCKED_HOSTS_EXPIRE)
+
+	return retryNoFailNoOutput(
+		10, time.Second*2, _updateBlockedHosts,
+		"getting blocked hosts",
+	)
+}
 
 func filterDNS(req *dns.Msg) *dns.Msg {
 	// multiple questions are barely supported. answer null if any are blocked
@@ -150,6 +205,8 @@ func filterDNS(req *dns.Msg) *dns.Msg {
 type dnsHandler struct{}
 
 func (h *dnsHandler) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
+	go ensureBlockList() // dont block
+
 	blockedAnswer := filterDNS(req)
 	if blockedAnswer != nil {
 		w.WriteMsg(blockedAnswer)
@@ -194,40 +251,6 @@ func (h *dnsHandler) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	w.WriteMsg(res)
 }
 
-var hostRegexp = regexp.MustCompile(`^0\.0\.0\.0 (.+?)$`)
-
-func updateBlockedHosts() error {
-	res, err := httpClient.Get(HOSTS_URL)
-	if err != nil {
-		return err
-	}
-	defer res.Body.Close()
-
-	data, err := io.ReadAll(res.Body)
-	if err != nil {
-		return err
-	}
-
-	newBlockedHosts := map[string]struct{}{}
-
-	for line := range strings.SplitSeq(string(data), "\n") {
-		matches := hostRegexp.FindStringSubmatch(strings.TrimSpace(line))
-		if len(matches) == 0 {
-			continue
-		}
-		newBlockedHosts[matches[1]] = struct{}{}
-	}
-
-	blockedHostsMutex.Lock()
-	blockedHosts = newBlockedHosts
-	blockedHostsMutex.Unlock()
-
-	p := message.NewPrinter(language.English)
-	log.Println(p.Sprintf("updated %d ignored hosts", len(blockedHosts)))
-
-	return nil
-}
-
 func main() {
 	log.Println("doh hostname: " + DOH_HOSTNAME)
 	log.Println("bootstrap dns: " + BOOTSTRAP_DNS)
@@ -247,26 +270,11 @@ func main() {
 		},
 	}
 
-	retryUpdateBlockedHosts := func(waitSeconds time.Duration) bool {
-		return RetryNoFailNoOutput(
-			5, time.Second*waitSeconds, updateBlockedHosts,
-			"updating blocked hosts",
-		)
-	}
-
-	ok := retryUpdateBlockedHosts(2)
+	ok := ensureBlockList()
 	if !ok {
 		// definitely dont want to start dns server without blocked hosts
 		os.Exit(1)
 	}
-
-	c := cron.New()
-	// at midnight
-	c.AddFunc("0 0 * * *", func() {
-		retryUpdateBlockedHosts(10)
-		// if not ok, rip dude. try again tomorrow i guess
-	})
-	c.Start()
 
 	handler := new(dnsHandler)
 	server := &dns.Server{
