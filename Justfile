@@ -19,10 +19,9 @@ install: build
 	sudo cp doh-hole.service /etc/systemd/system/
 
 	sudo systemctl daemon-reload
-	sudo systemctl enable --now doh-hole.service
+	sudo systemctl enable doh-hole.service
+	sudo systemctl restart doh-hole.service
 
 	sleep 1
 	sudo systemctl status doh-hole.service
-
-	sudo rm -f /etc/resolv.conf
-	sudo bash -c "echo 'nameserver 127.0.0.1' > /etc/resolv.conf" 
+	

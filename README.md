@@ -8,7 +8,7 @@ Find more in `main.go`
 
 ## Installation
 
--   Make sure `/etc/resolv.conf` isn't getting written
+-   Make sure `/etc/resolv.conf` isn't getting overwritten
 
     https://wiki.archlinux.org/title/Domain_name_resolution#Overwriting_of_/etc/resolv.conf
 
@@ -21,5 +21,7 @@ Find more in `main.go`
 
 -   Build and install with `just install`<br/>
     Please read **Justfile** before running
+
+-   Update `/etc/resolv.conf` with `nameserver 127.0.0.1`
 
 -   Verify at top of https://dns.sb and any from [StevenBlack/hosts](https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts)
