@@ -95,7 +95,7 @@ var (
 	blockedHostsMutex  = sync.Mutex{}
 	blockedHostsExpire time.Time
 
-	blockedHostRegexp = regexp.MustCompile(`^0\.0\.0\.0 (.+?)$`)
+	blockedHostRegexp = regexp.MustCompile(`^0\.0\.0\.0\s(.+?)(?:$|[\s#])`)
 )
 
 func _updateBlockedHosts() error {
@@ -128,7 +128,7 @@ func _updateBlockedHosts() error {
 
 	p := message.NewPrinter(language.English)
 	log.Println(p.Sprintf(
-		"got %d blocked hosts. expires in %s", len(blockedHosts),
+		"got %d blocked hosts. expires in %s", len(newBlockedHosts),
 		formatDuration(BLOCKED_HOSTS_EXPIRE),
 	))
 
