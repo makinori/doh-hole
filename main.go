@@ -91,8 +91,10 @@ var (
 		// },
 	}
 
-	blockedHosts       map[string]struct{}
-	blockedHostsMutex  = sync.Mutex{}
+	// we're replacing map when updating so no need to use sync.Map
+	blockedHosts      map[string]struct{}
+	blockedHostsMutex = sync.RWMutex{}
+
 	blockedHostsExpire time.Time
 
 	blockedHostRegexp = regexp.MustCompile(`^0\.0\.0\.0\s(.+?)(?:$|[\s#])`)
@@ -153,8 +155,8 @@ func filterDNS(req *dns.Msg) *dns.Msg {
 	// multiple questions are barely supported. answer null if any are blocked
 	// note: we're blocking everything, not just A and AAAA
 
-	blockedHostsMutex.Lock()
-	defer blockedHostsMutex.Unlock()
+	blockedHostsMutex.RLock()
+	defer blockedHostsMutex.RUnlock()
 
 	var blockedQuestion *dns.Question
 
