@@ -30,7 +30,8 @@ Find more in [main.go](https://github.com/makinori/doh-hole/blob/main/main.go)
 
 -   Build with `just buildarm64` and place in `/data/doh-hole`
 
--   Copy `unifi-os/doh-hole.service` to `/etc/systemd/system/doh-hole.service`
+-   Copy `unifi-os/doh-hole.service`<br/>
+    to `/etc/systemd/system/doh-hole.service`
 
 -   Enable and start service
 
