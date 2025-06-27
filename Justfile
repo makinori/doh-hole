@@ -10,6 +10,11 @@ build:
 	CGO_ENABLED=0 go build -ldflags="-s -w" -o doh-hole .
 	strip doh-hole
 
+alias ba := buildarm64
+buildarm64:
+	GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o doh-hole.arm64 .
+	# strip doh-hole.arm64
+
 alias i := install
 install: build
 	sudo rm -f /usr/bin/doh-hole
