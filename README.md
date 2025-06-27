@@ -43,5 +43,3 @@ Find more in [main.go](https://github.com/makinori/doh-hole/blob/main/main.go)
 
 -   Make sure encrypted DNS is disabled in settings<br/>
     and set DNS under internet to `127.0.53.54`
-
-TODO: although it works, filtered dns replies aren't 100% correct and get dropped

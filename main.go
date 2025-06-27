@@ -180,11 +180,14 @@ func filterDNS(req *dns.Msg) *dns.Msg {
 
 	// https://github.com/AdguardTeam/AdGuardHome/blob/master/internal/dnsforward/msg.go
 
-	m := &dns.Msg{}
-	m = m.SetRcode(m, dns.RcodeSuccess)
-	m.RecursionAvailable = true
-	m.Compress = true
-	m.Id = req.Id
+	m := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			RecursionAvailable: true,
+		},
+		Compress: true,
+	}
+
+	m.SetReply(req) // sets dns.RcodeSuccess
 
 	hdr := dns.RR_Header{
 		Name:  blockedQuestion.Name,
@@ -221,7 +224,6 @@ func handleTestDNS(req *dns.Msg) *dns.Msg {
 
 	m := &dns.Msg{
 		MsgHdr: dns.MsgHdr{
-			Id:                 req.Id,
 			RecursionAvailable: true,
 		},
 		Compress: true,
@@ -238,7 +240,8 @@ func handleTestDNS(req *dns.Msg) *dns.Msg {
 			}},
 		},
 	}
-	m = m.SetRcode(m, dns.RcodeSuccess)
+
+	m.SetReply(req) // sets dns.RcodeSuccess
 
 	return m
 }
