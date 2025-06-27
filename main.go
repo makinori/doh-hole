@@ -222,6 +222,8 @@ func handleTestDNS(req *dns.Msg) *dns.Msg {
 		return nil
 	}
 
+	hostname, _ := os.Hostname()
+
 	m := &dns.Msg{
 		MsgHdr: dns.MsgHdr{
 			RecursionAvailable: true,
@@ -235,6 +237,7 @@ func handleTestDNS(req *dns.Msg) *dns.Msg {
 				Rrtype: dns.TypeTXT,
 			}, Txt: []string{
 				"gawr gura best shork",
+				hostname,
 				time.Now().Format(time.Stamp),
 				runtime.Version(),
 			}},
