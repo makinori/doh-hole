@@ -1,0 +1,10 @@
+[Unit]
+Description=DoH Hole
+
+[Service]
+Environment="ADDR=127.0.53.54"
+Environment="PORT=53"
+ExecStart=/data/doh-hole
+
+[Install]
+WantedBy=multi-user.target
