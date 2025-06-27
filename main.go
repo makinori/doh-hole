@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"os"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -21,6 +22,7 @@ import (
 )
 
 // TODO: add caching
+// TODO: dont think im using SetRcode correctly
 
 const (
 	// hostname can resolve different ips closest to location so need a bootstrap
@@ -163,10 +165,7 @@ func filterDNS(req *dns.Msg) *dns.Msg {
 	var blockedQuestion *dns.Question
 
 	for _, question := range req.Question {
-		hostname := question.Name
-		if strings.HasSuffix(hostname, ".") {
-			hostname = hostname[:len(hostname)-1]
-		}
+		hostname := strings.TrimSuffix(question.Name, ".")
 
 		_, blocked := blockedHosts[hostname]
 		if blocked {
@@ -211,10 +210,49 @@ func filterDNS(req *dns.Msg) *dns.Msg {
 	return m
 }
 
+func handleTestDNS(req *dns.Msg) *dns.Msg {
+	if len(req.Question) == 0 {
+		return nil
+	}
+
+	if req.Question[0].Name != "doh-hole." {
+		return nil
+	}
+
+	m := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			Id:                 req.Id,
+			RecursionAvailable: true,
+		},
+		Compress: true,
+		Answer: []dns.RR{
+			&dns.TXT{Hdr: dns.RR_Header{
+				Name:   "doh-hole.",
+				Ttl:    0,
+				Class:  dns.ClassINET,
+				Rrtype: dns.TypeTXT,
+			}, Txt: []string{
+				"gawr gura best shork",
+				runtime.Version(),
+			}},
+		},
+	}
+	m = m.SetRcode(m, dns.RcodeSuccess)
+
+	return m
+}
+
 type dnsHandler struct{}
 
 func (h *dnsHandler) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	go ensureBlockList() // dont block
+
+	testAnswer := handleTestDNS(req)
+	if testAnswer != nil {
+		w.WriteMsg(testAnswer)
+		log.Println("test from: " + w.RemoteAddr().String())
+		return
+	}
 
 	blockedAnswer := filterDNS(req)
 	if blockedAnswer != nil {
