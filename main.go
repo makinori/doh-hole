@@ -52,9 +52,11 @@ func envOrDefault(key string, defaultValue string) string {
 
 var (
 	_, DEBUG = os.LookupEnv("DEBUG")
-	PORT     = envOrDefault("PORT", "53")
 
-	LISTEN_ADDR = "127.0.0.1:" + PORT
+	ADDR = envOrDefault("ADDR", "127.0.0.1")
+	PORT = envOrDefault("PORT", "53")
+
+	LISTEN_ADDR = ADDR + ":" + PORT
 
 	// https://quic-go.net/docs/http3/client
 
