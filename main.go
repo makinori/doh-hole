@@ -233,6 +233,7 @@ func handleTestDNS(req *dns.Msg) *dns.Msg {
 				Rrtype: dns.TypeTXT,
 			}, Txt: []string{
 				"gawr gura best shork",
+				time.Now().Format(time.Stamp),
 				runtime.Version(),
 			}},
 		},
