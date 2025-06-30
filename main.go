@@ -22,7 +22,7 @@ import (
 )
 
 // TODO: add caching
-// TODO: dont think im using SetRcode correctly
+// TODO: test dns record not coming through systemd-resolved
 
 const (
 	// hostname can resolve different ips closest to location so need a bootstrap
