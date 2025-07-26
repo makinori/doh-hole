@@ -1,6 +1,6 @@
-# DoH Hole
+# DNS over HTTPS Black Hole
 
-Tiny DNS over HTTPS resolver with block list in Go
+Tiny secure DNS resolver with block list in Go
 
 Uses https://quad9.net and [StevenBlack/hosts](https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts)
 
@@ -24,7 +24,35 @@ Find more in [main.go](https://github.com/makinori/doh-hole/blob/main/main.go)
 
 -   Update `/etc/resolv.conf` with `nameserver 127.0.0.1`
 
--   Verify at https://on.quad9.net and any from [StevenBlack/hosts](https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts)
+-   Verify using
+
+    -   https://on.quad9.net
+    -   any from [StevenBlack/hosts](https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts)
+    -   `drill TXT doh.hole`
+
+## systemd-resolved
+
+https://wiki.archlinux.org/title/Systemd-resolved
+
+-   Write `/etc/systemd/resolved.conf.d/dns_servers.conf`
+
+    ```conf
+    [Resolve]
+    DNS=127.0.0.1
+    Domains=~.
+    FallbackDNS=
+    ```
+
+-   Replace `resolv.conf` and enable
+
+    ```bash
+    sudo rm -f /etc/resolv.conf
+    sudo ln -sf ../run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
+    sudo systemctl enable --now systemd-resolved.service
+    ```
+
+-   `resolv.conf` will probably use `127.0.0.53`<br/>
+    Check using `resolvectl` and above methods
 
 ## UniFi OS
 
