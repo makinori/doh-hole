@@ -22,7 +22,6 @@ import (
 )
 
 // TODO: add caching
-// TODO: test dns record not coming through systemd-resolved
 
 const (
 	// hostname can resolve different ips closest to location so need a bootstrap
@@ -218,30 +217,39 @@ func handleTestDNS(req *dns.Msg) *dns.Msg {
 		return nil
 	}
 
-	if req.Question[0].Name != "doh-hole." {
+	if req.Question[0].Name != "doh.hole." {
 		return nil
 	}
 
 	hostname, _ := os.Hostname()
+
+	lines := []string{
+		"gawr gura best shork",
+		"hostname: " + hostname,
+		"time: " + time.Now().Format("15:04:05"),
+		runtime.Version(),
+	}
+
+	records := make([]dns.RR, len(lines))
+
+	for i, line := range lines {
+		records[i] = &dns.TXT{
+			Hdr: dns.RR_Header{
+				Name:   "doh.hole.",
+				Ttl:    0,
+				Class:  dns.ClassINET,
+				Rrtype: dns.TypeTXT,
+			},
+			Txt: []string{line},
+		}
+	}
 
 	m := &dns.Msg{
 		MsgHdr: dns.MsgHdr{
 			RecursionAvailable: true,
 		},
 		Compress: true,
-		Answer: []dns.RR{
-			&dns.TXT{Hdr: dns.RR_Header{
-				Name:   "doh-hole.",
-				Ttl:    0,
-				Class:  dns.ClassINET,
-				Rrtype: dns.TypeTXT,
-			}, Txt: []string{
-				"gawr gura best shork",
-				hostname,
-				time.Now().Format(time.Stamp),
-				runtime.Version(),
-			}},
-		},
+		Answer:   records,
 	}
 
 	m.SetReply(req) // sets dns.RcodeSuccess
