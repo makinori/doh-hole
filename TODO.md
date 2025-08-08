@@ -1,0 +1,1 @@
+-   if no internet, systemd and software will eventually stay offline
