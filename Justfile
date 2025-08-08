@@ -27,7 +27,7 @@ install: build
 	sudo systemctl enable doh-hole.service
 	sudo systemctl restart doh-hole.service
 
-	sleep 1
+	sleep 2
 	sudo systemctl status doh-hole.service
 	
 alias iu := installunifios
