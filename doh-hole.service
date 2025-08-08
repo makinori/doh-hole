@@ -1,8 +1,11 @@
 [Unit]
 Description=DoH Hole
+After=network.target
 
 [Service]
 ExecStart=/usr/bin/doh-hole
+Restart=always
+RestartSec=1s
 
 [Install]
 WantedBy=multi-user.target

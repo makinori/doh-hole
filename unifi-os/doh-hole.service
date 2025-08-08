@@ -1,10 +1,13 @@
 [Unit]
 Description=DoH Hole
+After=network.target
 
 [Service]
 Environment="ADDR=127.0.53.54"
 Environment="PORT=53"
 ExecStart=/data/doh-hole
+Restart=always
+RestartSec=1s
 
 [Install]
 WantedBy=multi-user.target

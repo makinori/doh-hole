@@ -30,3 +30,22 @@ install: build
 	sleep 1
 	sudo systemctl status doh-hole.service
 	
+alias iu := installunifios
+# build and upload to 192.168.1.1
+installunifios: buildarm64
+	#!/usr/bin/env bash
+	set -euxo pipefail
+	# TODO: have to type password in multiple times
+	sftp root@192.168.1.1 << EOF
+		rm /data/doh-hole
+		put doh-hole.arm64 /data/doh-hole
+		put unifi-os/doh-hole.service /etc/systemd/system/doh-hole.service
+	EOF
+	ssh root@192.168.1.1 << EOF
+		systemctl daemon-reload
+		systemctl enable doh-hole.service
+		systemctl restart doh-hole.service
+		sleep 2
+		systemctl status doh-hole.service
+	EOF
+	
