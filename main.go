@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coredns/coredns/plugin/pkg/doh"
@@ -140,16 +141,26 @@ func _updateBlockedHosts() error {
 	return nil
 }
 
+var blockListMutex atomic.Bool
+
 func ensureBlockList() bool {
 	if time.Now().Before(blockedHostsExpire) {
 		return true
 	}
 
+	if blockListMutex.Load() {
+		return false
+	}
+
+	blockListMutex.Store(true)
+	defer blockListMutex.Store(false)
+
 	// immediate update expire
 	blockedHostsExpire = time.Now().Add(BLOCKED_HOSTS_EXPIRE)
 
+	// try forever
 	return retryNoFailNoOutput(
-		10, time.Second*2, _updateBlockedHosts,
+		-1, time.Second*2, _updateBlockedHosts,
 		"getting blocked hosts",
 	)
 }
@@ -277,7 +288,9 @@ func (h *dnsHandler) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 
 	httpReq, err := doh.NewRequest(http.MethodGet, "https://"+DOH_HOSTNAME, req)
 	if err != nil {
-		log.Println("failed to create doh request: " + err.Error())
+		if DEBUG {
+			log.Println("failed to create doh request: " + err.Error())
+		}
 		return
 	}
 
@@ -299,14 +312,18 @@ func (h *dnsHandler) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	// httpReq.Method = http3.MethodGet0RTT
 	// httpRes, err := http3Transport.RoundTrip(httpReq)
 	if err != nil {
-		log.Println("failed doh request: " + err.Error())
+		if DEBUG {
+			log.Println("failed doh request: " + err.Error())
+		}
 		return
 	}
 	defer httpRes.Body.Close()
 
 	res, err := doh.ResponseToMsg(httpRes)
 	if err != nil {
-		log.Println("failed to convert doh response: " + err.Error())
+		if DEBUG {
+			log.Println("failed to convert doh response: " + err.Error())
+		}
 		return
 	}
 

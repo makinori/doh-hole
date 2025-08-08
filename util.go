@@ -13,12 +13,22 @@ func retryNoFail[T any](
 	fn func() (T, error),
 	errorMessagePrefix string,
 ) bool {
+	if attempts == 0 {
+		return false
+	}
+
 	var currentOutput T
 	var lastError error
 
 	attempt := 0
 
-	for attempt < attempts {
+	for func() bool {
+		if attempts >= 0 {
+			return attempt < attempts
+		} else {
+			return true
+		}
+	}() {
 		currentOutput, lastError = fn()
 
 		if lastError == nil {
@@ -32,9 +42,11 @@ func retryNoFail[T any](
 			errorMessagePrefix, attempt+1, lastError.Error(),
 		)
 
-		final := attempt == attempts-1
-		if final {
-			break
+		if attempts >= 0 {
+			final := attempt == attempts-1
+			if final {
+				break
+			}
 		}
 
 		attempt++
