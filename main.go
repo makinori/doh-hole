@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log"
 	"net"
@@ -16,13 +17,14 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/coredns/coredns/plugin/pkg/doh"
+	"github.com/fxamacker/cbor/v2"
 	"github.com/miekg/dns"
+	"github.com/robfig/cron/v3"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 )
-
-// TODO: add caching
 
 const (
 	// hostname can resolve different ips closest to location so need a bootstrap
@@ -81,19 +83,19 @@ var (
 
 	// leave max idle timeout as is. requesting a new ip is usually a good idea
 
-	httpClient = http.Client{
-		// Transport: &http.Transport{
-		// 	DialContext: func(
-		// 		ctx context.Context, network, addr string,
-		// 	) (net.Conn, error) {
-		// 		d := net.Dialer{}
-		// 		if strings.Contains(addr, DOH_HOSTNAME) {
-		// 			return d.DialContext(ctx, network, "")
-		// 		}
-		// 		return d.DialContext(ctx, network, addr)
-		// 	},
-		// },
-	}
+	// httpClient = http.Client{
+	// Transport: &http.Transport{
+	// 	DialContext: func(
+	// 		ctx context.Context, network, addr string,
+	// 	) (net.Conn, error) {
+	// 		d := net.Dialer{}
+	// 		if strings.Contains(addr, DOH_HOSTNAME) {
+	// 			return d.DialContext(ctx, network, "")
+	// 		}
+	// 		return d.DialContext(ctx, network, addr)
+	// 	},
+	// },
+	// }
 
 	// we're replacing map when updating so no need to use sync.Map
 	blockedHosts      map[string]struct{}
@@ -102,12 +104,37 @@ var (
 	blockedHostsExpire time.Time
 
 	blockedHostRegexp = regexp.MustCompile(`^0\.0\.0\.0\s(.+?)(?:$|[\s#])`)
+
+	dnsCache sync.Map
 )
 
-func _updateBlockedHosts() error {
+func init() {
+	// reap dns cache every 5 minutes
+	// map could be huge although this is threaded
+	c := cron.New()
+	c.AddFunc("0/5 * * * *", func() {
+		dnsCache.Range(func(key, cacheEntryAny any) bool {
+			if DEBUG {
+				log.Println("reaping dns cache...")
+			}
+			cacheEntry, ok := cacheEntryAny.(CacheEntry)
+			if !ok {
+				return true
+			}
+			if cacheEntry.Expires.Before(time.Now()) {
+				log.Println("deleting", key)
+				dnsCache.Delete(key)
+			}
+			return true
+		})
+	})
+	c.Start()
+}
+
+func rawUpdateBlockedHosts() error {
 	// TODO: will use bootstrap dns. shouldnt. idk maybe im too schizo
 
-	res, err := httpClient.Get(BLOCKED_HOSTS_URL)
+	res, err := http.DefaultClient.Get(BLOCKED_HOSTS_URL)
 	if err != nil {
 		return err
 	}
@@ -160,9 +187,55 @@ func ensureBlockList() bool {
 
 	// try forever
 	return retryNoFailNoOutput(
-		-1, time.Second*2, _updateBlockedHosts,
+		-1, time.Second*2, rawUpdateBlockedHosts,
 		"getting blocked hosts",
 	)
+}
+
+func handleTestDNS(req *dns.Msg) *dns.Msg {
+	if len(req.Question) == 0 {
+		return nil
+	}
+
+	if req.Question[0].Name != "doh.hole." {
+		return nil
+	}
+
+	hostname, _ := os.Hostname()
+
+	lines := []string{
+		// "gawr gura best shork",
+		"sameko saba best fish",
+		"hostname: " + hostname,
+		"time: " + time.Now().Format("15:04:05"),
+		runtime.Version(),
+	}
+
+	records := make([]dns.RR, len(lines))
+
+	for i, line := range lines {
+		records[i] = &dns.TXT{
+			Hdr: dns.RR_Header{
+				Name:   "doh.hole.",
+				Ttl:    0,
+				Class:  dns.ClassINET,
+				Rrtype: dns.TypeTXT,
+			},
+			Txt: []string{line},
+		}
+	}
+
+	m := &dns.Msg{
+		MsgHdr: dns.MsgHdr{
+			RecursionAvailable: true,
+		},
+		Compress: true,
+		Answer:   records,
+	}
+
+	m.SetReply(req) // sets dns.RcodeSuccess
+
+	return m
 }
 
 func filterDNS(req *dns.Msg) *dns.Msg {
@@ -201,7 +274,7 @@ func filterDNS(req *dns.Msg) *dns.Msg {
 
 	hdr := dns.RR_Header{
 		Name:  blockedQuestion.Name,
-		Ttl:   3600,
+		Ttl:   3600, // 1 hour
 		Class: dns.ClassINET,
 	}
 
@@ -223,49 +296,108 @@ func filterDNS(req *dns.Msg) *dns.Msg {
 	return m
 }
 
-func handleTestDNS(req *dns.Msg) *dns.Msg {
-	if len(req.Question) == 0 {
+type CacheEntry struct {
+	Expires  time.Time
+	Response dns.Msg
+}
+
+func getCacheKey(req *dns.Msg) uint64 {
+	cacheKeyData, err := cbor.Marshal(req.Question[0])
+	if err != nil {
+		log.Println("failed to get cache key data: " + err.Error())
+		return 0
+	}
+	return xxhash.Sum64(cacheKeyData)
+}
+
+func getCached(req *dns.Msg) *dns.Msg {
+	cacheKey := getCacheKey(req)
+	if cacheKey == 0 {
 		return nil
 	}
 
-	if req.Question[0].Name != "doh.hole." {
+	cacheEntryAny, ok := dnsCache.Load(cacheKey)
+	if !ok {
 		return nil
 	}
 
-	hostname, _ := os.Hostname()
-
-	lines := []string{
-		"gawr gura best shork",
-		"hostname: " + hostname,
-		"time: " + time.Now().Format("15:04:05"),
-		runtime.Version(),
-	}
-
-	records := make([]dns.RR, len(lines))
-
-	for i, line := range lines {
-		records[i] = &dns.TXT{
-			Hdr: dns.RR_Header{
-				Name:   "doh.hole.",
-				Ttl:    0,
-				Class:  dns.ClassINET,
-				Rrtype: dns.TypeTXT,
-			},
-			Txt: []string{line},
+	cacheEntry, ok := cacheEntryAny.(CacheEntry)
+	if !ok {
+		if DEBUG {
+			log.Printf("failed to cast cache entry")
 		}
+		return nil
 	}
 
-	m := &dns.Msg{
-		MsgHdr: dns.MsgHdr{
-			RecursionAvailable: true,
-		},
-		Compress: true,
-		Answer:   records,
+	if cacheEntry.Expires.Before(time.Now()) {
+		return nil
 	}
 
-	m.SetReply(req) // sets dns.RcodeSuccess
+	res := cacheEntry.Response // copy
 
-	return m
+	res.SetReply(req)
+
+	return &res
+}
+
+func getFreshDoH(req *dns.Msg) (*dns.Msg, error) {
+	httpReq, err := doh.NewRequest(http.MethodGet, "https://"+DOH_HOSTNAME, req)
+	if err != nil {
+		return nil, errors.New("failed to create doh request: " + err.Error())
+	}
+
+	if DEBUG {
+		trace := &httptrace.ClientTrace{
+			DNSDone: func(dnsInfo httptrace.DNSDoneInfo) {
+				log.Printf("dns done: %+v\n", dnsInfo)
+			},
+			GotConn: func(connInfo httptrace.GotConnInfo) {
+				log.Printf("got conn: %+v\n", connInfo)
+			},
+		}
+		httpReq = httpReq.WithContext(
+			httptrace.WithClientTrace(httpReq.Context(), trace),
+		)
+	}
+
+	httpRes, err := http.DefaultClient.Do(httpReq)
+	// httpReq.Method = http3.MethodGet0RTT
+	// httpRes, err := http3Transport.RoundTrip(httpReq)
+	if err != nil {
+		return nil, errors.New("failed doh request: " + err.Error())
+	}
+	defer httpRes.Body.Close()
+
+	res, err := doh.ResponseToMsg(httpRes)
+	if err != nil {
+		return nil, errors.New("failed to convert doh response: " + err.Error())
+	}
+
+	// cache response. dont block
+
+	go func() {
+		cacheKey := getCacheKey(req)
+		if cacheKey == 0 {
+			return
+		}
+
+		var lowestTTL uint32
+		for i, answer := range res.Answer {
+			ttl := answer.Header().Ttl
+			if i == 0 {
+				lowestTTL = ttl
+			} else if ttl < lowestTTL {
+				lowestTTL = ttl
+			}
+		}
+
+		dnsCache.Store(cacheKey, CacheEntry{
+			Expires:  time.Now().Add(time.Second * time.Duration(lowestTTL)),
+			Response: *res, // copy response
+		})
+	}()
+
+	return res, nil
 }
 
 type dnsHandler struct{}
@@ -286,43 +418,19 @@ func (h *dnsHandler) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 		return
 	}
 
-	httpReq, err := doh.NewRequest(http.MethodGet, "https://"+DOH_HOSTNAME, req)
-	if err != nil {
-		if DEBUG {
-			log.Println("failed to create doh request: " + err.Error())
-		}
+	cachedAnswer := getCached(req)
+	if cachedAnswer != nil {
+		w.WriteMsg(cachedAnswer)
+		// still fetch and cache just incase it changed
+		// i think the extra bandwidth is ok. cached dns sucks
+		go getFreshDoH(req)
 		return
 	}
 
-	if DEBUG {
-		trace := &httptrace.ClientTrace{
-			DNSDone: func(dnsInfo httptrace.DNSDoneInfo) {
-				log.Printf("dns done: %+v\n", dnsInfo)
-			},
-			GotConn: func(connInfo httptrace.GotConnInfo) {
-				log.Printf("got conn: %+v\n", connInfo)
-			},
-		}
-		httpReq = httpReq.WithContext(
-			httptrace.WithClientTrace(httpReq.Context(), trace),
-		)
-	}
-
-	httpRes, err := httpClient.Do(httpReq)
-	// httpReq.Method = http3.MethodGet0RTT
-	// httpRes, err := http3Transport.RoundTrip(httpReq)
+	res, err := getFreshDoH(req)
 	if err != nil {
 		if DEBUG {
-			log.Println("failed doh request: " + err.Error())
-		}
-		return
-	}
-	defer httpRes.Body.Close()
-
-	res, err := doh.ResponseToMsg(httpRes)
-	if err != nil {
-		if DEBUG {
-			log.Println("failed to convert doh response: " + err.Error())
+			log.Println(err)
 		}
 		return
 	}
@@ -349,7 +457,15 @@ func main() {
 		},
 	}
 
-	ok := ensureBlockList()
+	transport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		log.Println("failed to cast default http transport")
+		os.Exit(1)
+	}
+
+	transport.IdleConnTimeout = time.Hour // default is 1m30s
+
+	ok = ensureBlockList()
 	if !ok {
 		// definitely dont want to start dns server without blocked hosts
 		os.Exit(1)
