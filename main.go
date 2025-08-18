@@ -26,7 +26,9 @@ const (
 	// DOH_HOSTNAME  = "cloudflare-dns.com"
 	// BOOTSTRAP_DNS = "1.1.1.1:53"
 
-	// TODO: eu4all
+	// official european
+	// DOH_HOSTNAME  = "unfiltered.joindns4.eu"
+	// BOOTSTRAP_DNS = "86.54.11.100:53"
 )
 
 func envOrDefault(key string, defaultValue string) string {
