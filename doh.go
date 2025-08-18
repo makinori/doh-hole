@@ -5,7 +5,6 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptrace"
-	"time"
 
 	"github.com/coredns/coredns/plugin/pkg/doh"
 	"github.com/miekg/dns"
@@ -81,29 +80,7 @@ func getFreshDoH(req *dns.Msg) (*dns.Msg, error) {
 		return nil, errors.New("failed to convert doh response: " + err.Error())
 	}
 
-	// cache response. dont block
-
-	go func() {
-		cacheKey := getCacheKey(req)
-		if cacheKey == 0 {
-			return
-		}
-
-		var lowestTTL uint32
-		for i, answer := range res.Answer {
-			ttl := answer.Header().Ttl
-			if i == 0 {
-				lowestTTL = ttl
-			} else if ttl < lowestTTL {
-				lowestTTL = ttl
-			}
-		}
-
-		dnsCache.Store(cacheKey, CacheEntry{
-			Expires:  time.Now().Add(time.Second * time.Duration(lowestTTL)),
-			Response: *res, // copy response
-		})
-	}()
+	go setCache(req, res) // dont block
 
 	return res, nil
 }

@@ -20,36 +20,72 @@ var (
 	dnsCache sync.Map
 )
 
+func reapDNSCache() {
+	dnsCache.Range(func(key, cacheEntryAny any) bool {
+		if DEBUG {
+			log.Println("reaping dns cache...")
+		}
+
+		cacheEntry, ok := cacheEntryAny.(CacheEntry)
+		if !ok {
+			return true
+		}
+
+		if cacheEntry.Expires.After(time.Now()) {
+			return true
+		}
+
+		if DEBUG {
+			log.Println("deleting", key)
+		}
+
+		dnsCache.Delete(key)
+
+		return true
+	})
+}
+
 func init() {
 	// reap dns cache every 5 minutes
 	// map could be huge although this is threaded
+	// c := cron.New(cron.WithSeconds())
 	c := cron.New()
-	c.AddFunc("0/5 * * * *", func() {
-		dnsCache.Range(func(key, cacheEntryAny any) bool {
-			if DEBUG {
-				log.Println("reaping dns cache...")
-			}
-			cacheEntry, ok := cacheEntryAny.(CacheEntry)
-			if !ok {
-				return true
-			}
-			if cacheEntry.Expires.Before(time.Now()) {
-				log.Println("deleting", key)
-				dnsCache.Delete(key)
-			}
-			return true
-		})
-	})
+	c.AddFunc("*/5 * * * *", reapDNSCache)
 	c.Start()
 }
 
 func getCacheKey(req *dns.Msg) uint64 {
+	if len(req.Question) == 0 {
+		return 0
+	}
+
 	cacheKeyData, err := cbor.Marshal(req.Question[0])
 	if err != nil {
 		log.Println("failed to get cache key data: " + err.Error())
 		return 0
 	}
+
 	return xxhash.Sum64(cacheKeyData)
+}
+
+func setCache(req *dns.Msg, res *dns.Msg) {
+	cacheKey := getCacheKey(req)
+	if cacheKey == 0 {
+		return
+	}
+
+	var lowestTTL uint32
+	for i, answer := range res.Answer {
+		ttl := answer.Header().Ttl
+		if i == 0 || ttl < lowestTTL {
+			lowestTTL = ttl
+		}
+	}
+
+	dnsCache.Store(cacheKey, CacheEntry{
+		Expires:  time.Now().Add(time.Second * time.Duration(lowestTTL)),
+		Response: *res, // copy response
+	})
 }
 
 func getCached(req *dns.Msg) *dns.Msg {
@@ -76,8 +112,6 @@ func getCached(req *dns.Msg) *dns.Msg {
 	}
 
 	res := cacheEntry.Response // copy
-
 	res.SetReply(req)
-
 	return &res
 }
