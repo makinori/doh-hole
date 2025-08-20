@@ -82,6 +82,10 @@ func setCache(req *dns.Msg, res *dns.Msg) {
 		}
 	}
 
+	if lowestTTL == 0 {
+		return
+	}
+
 	dnsCache.Store(cacheKey, CacheEntry{
 		Expires:  time.Now().Add(time.Second * time.Duration(lowestTTL)),
 		Response: *res, // copy response
