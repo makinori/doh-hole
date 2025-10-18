@@ -1,5 +1,7 @@
 # DNS over HTTPS Black Hole
 
+<img align="right" src="gopher.png" />
+
 Tiny secure DNS resolver with block list in Go
 
 Uses https://quad9.net and [StevenBlack/hosts](https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts)
