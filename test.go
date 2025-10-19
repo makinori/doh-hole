@@ -17,6 +17,7 @@ var (
 		"sameko saba best fish",
 		"gawr gura best shork",
 	}
+	testDNSDate = "unknown"
 )
 
 func handleTestDNS(req *dns.Msg) *dns.Msg {
@@ -39,6 +40,7 @@ func handleTestDNS(req *dns.Msg) *dns.Msg {
 		testDNSSilly,
 		"hostname: " + hostname,
 		"time: " + time.Now().Format("15:04:05"),
+		"built: " + testDNSDate,
 		runtime.Version(),
 	}
 

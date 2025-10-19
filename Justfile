@@ -7,12 +7,16 @@ start:
 
 alias b := build
 build:
-	CGO_ENABLED=0 go build -ldflags="-s -w" -o doh-hole .
+	CGO_ENABLED=0 \
+	go build -o doh-hole \
+	-ldflags="-s -w -X main.testDNSDate=$(date +%Y-%m-%d)" .
 	strip doh-hole
 
 alias ba := buildarm64
 buildarm64:
-	GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o doh-hole.arm64 .
+	CGO_ENABLED=0 GOARCH=arm64 \
+	go build -o doh-hole.arm64 \
+	-ldflags="-s -w -X main.testDNSDate=$(date +%Y-%m-%d)" .
 	# strip doh-hole.arm64
 
 alias i := install
