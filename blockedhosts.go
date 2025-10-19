@@ -16,12 +16,6 @@ import (
 	"golang.org/x/text/message"
 )
 
-const (
-	BLOCKED_HOSTS_URL = "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
-	// use expire so if machine has slept, will update if expired
-	BLOCKED_HOSTS_EXPIRE = time.Hour * 24
-)
-
 var (
 	blockedHostRegexp = regexp.MustCompile(`^0\.0\.0\.0\s(.+?)(?:$|[\s#])`)
 
